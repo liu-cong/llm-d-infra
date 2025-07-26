@@ -7,7 +7,7 @@
 ./install-deps.sh
 ```
 
-1. Use the quickstart to deploy Gateway CRDS + Gateway provider + Infra chart (from `/llm-d-infra/quickstart`). 
+1. Use the quickstart to deploy Gateway CRDS + Gateway provider + Infra chart (from `/llm-d-infra/quickstart`).
 
 
 ```bash
@@ -23,12 +23,25 @@ export HF_TOKEN=$(YOUR_TOKEN)
 ./llmd-infra-installer.sh --namespace ${NAMESPACE} -r infra-pd --gateway ${GATEWAY} --disable-metrics-collection
 ```
 
-1. Use the helmfile to apply the modelservice and GIE charts on top of it
+1. First we need to patch out the `rdma/ib` section of resources from the prefill and decode pods. After that Use the helmfile to apply the modelservice and GIE charts on top of it:
+
 ```bash
 cd examples/pd-disaggregation
-helmfile --namespace ${NAMESPACE} --selector managedBy=helmfile \
---set provider.name=gke \
-apply -f gke.helmfile.yaml --skip-diff-on-install
+
+yq '
+  del(.prefill.containers[0].resources.requests.rdma/ib) |
+  del(.prefill.containers[0].resources.limits.rdma/ib) |
+  del(.decode.containers[0].resources.requests.rdma/ib) |
+  del(.decode.containers[0].resources.limits.rdma/ib)
+' ms-pd/values.yaml > ms-pd/gke.values.yaml
+
+# our `gke.helmfile.yaml` is already referencing this new `ms-pd/gke.values.yaml` file
+
+helmfile apply \
+  --namespace ${NAMESPACE} \
+  --selector managedBy=helmfile \
+  --set provider.name=gke \
+  -f gke.helmfile.yaml --skip-diff-on-install
 ```
 
 ## Verifying the installation
@@ -59,12 +72,11 @@ ms-pd-llm-d-modelservice-prefill-549598dd6c-pbjzx   1/1     Running   0         
 
 1. Get the gateway endpoint:
 
-    ```bash
-    GATEWAY_NAME=infra-pd-inference-gateway
-    IP=$(kubectl get gateway/${GATEWAY_NAME} -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
-
-    PORT=80
-    ```
+```bash
+GATEWAY_NAME=infra-pd-inference-gateway
+IP=$(kubectl get gateway/${GATEWAY_NAME} -n ${NAMESPACE} -o jsonpath='{.status.addresses[0].value}')
+PORT=80
+```
 
 1. Try curling the `/v1/models` endpoint:
 
@@ -147,7 +159,7 @@ To remove the deployment:
 helmfile --selector managedBy=helmfile destroy --namespace ${NAMESPACE}
 
 # Remove the infrastructure
-helm uninstall infra-pd -n ${NAMESPACE}
+helm uninstall infra-pd --namespace ${NAMESPACE}
 ```
 
 ## Customization
