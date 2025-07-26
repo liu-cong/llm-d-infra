@@ -15,4 +15,4 @@
 *~
 
 # Provider specific values files
-# quickstart/examples/*/*/gke.values.yaml
+quickstart/examples/*/*/gke.values.yaml
